@@ -1,21 +1,33 @@
 # -*- coding: utf-8 -*-
-"""将 caster-comprehensive-guide.md 转换为置顶长文 HTML 页面"""
-import re
+"""将 jiaolun-caster-top-2026-11-03.md 转换为置顶长文 HTML 页面（原地更新，URL 不变）"""
+import re, json, html
 
-MD = 'drafts/caster-comprehensive-guide.md'
+MD = 'drafts/jiaolun-caster-top-2026-11-03.md'
 OUT = 'news/caster-comprehensive-guide.html'
 
 s = open(MD, encoding='utf-8').read()
 lines = s.split('\n')
 
-# 提取元数据（主关键词 / 长尾关键词）
+# 提取元数据
 long_kws = []
-for i, ln in enumerate(lines):
+meta_title = ''
+meta_desc = ''
+for ln in lines:
     if '长尾关键词' in ln:
         long_kws = [k.strip() for k in ln.replace('长尾关键词：', '').split('、')]
+    if ln.startswith('Meta Title:'):
+        meta_title = ln.replace('Meta Title:', '').strip()
+    if ln.startswith('Meta Description:'):
+        meta_desc = ln.replace('Meta Description:', '').strip()
+
+# 获取 H1 标题
+h1_title = ''
+for ln in lines:
+    if ln.startswith('# '):
+        h1_title = ln[2:].strip()
         break
 
-# 跳过 markdown 头部（# 标题、blockquote 元数据），从正文第一个小标题开始
+# 跳过 markdown 头部，从正文第一个 ## 开始
 body_lines = []
 started = False
 for ln in lines:
@@ -26,9 +38,7 @@ for ln in lines:
     if started:
         body_lines.append(ln)
 
-title = '脚轮完全指南：种类、材质、应用与选购维护一文讲透 - 脚轮.cn'
-description = '脚轮完全指南：种类、材质、应用场景、选购要点与维护保养一文讲透。本文面向采购与工业应用读者，系统讲解脚轮、万向轮、工业脚轮、聚氨酯脚轮、静音脚轮、重型脚轮的专业知识。'
-keywords = '脚轮,脚轮种类,脚轮材质,脚轮选购,脚轮维护,工业脚轮,万向轮,聚氨酯脚轮,静音脚轮,重型脚轮'
+keywords = '脚轮,脚轮种类,脚轮材质,脚轮应用场景,脚轮选购要点,脚轮维护保养,脚轮承重计算,万向轮和定向轮的区别,脚轮安装方法,脚轮定制'
 
 
 def md_to_html(blocks):
@@ -47,29 +57,25 @@ def md_to_html(blocks):
             out.append('<h2>' + inline(ln[3:]) + '</h2>')
             i += 1
         elif ln.startswith('- '):
-            # 收集连续列表项
             items = []
             while i < n and blocks[i].strip().startswith('- '):
                 items.append('<li>' + inline(blocks[i].strip()[2:]) + '</li>')
                 i += 1
             out.append('<ul>' + ''.join(items) + '</ul>')
         elif ln.startswith('|'):
-            # 表格
             tbl = []
             while i < n and blocks[i].strip().startswith('|'):
                 tbl.append(blocks[i].strip())
                 i += 1
-            # 跳过分隔行 |---|---|
             rows = [r for r in tbl if not re.match(r'^\|[\s\-:|]+\|$', r)]
-            html = '<table class="article-table">'
+            html_t = '<table class="article-table">'
             for r_idx, r in enumerate(rows):
                 cells = [c.strip() for c in r.strip('|').split('|')]
                 tag = 'th' if r_idx == 0 else 'td'
-                html += '<tr>' + ''.join('<%s>%s</%s>' % (tag, inline(c), tag) for c in cells) + '</tr>'
-            html += '</table>'
-            out.append(html)
+                html_t += '<tr>' + ''.join('<%s>%s</%s>' % (tag, inline(c), tag) for c in cells) + '</tr>'
+            html_t += '</table>'
+            out.append(html_t)
         elif ln.startswith('**') and '**' in ln[2:]:
-            # 粗体开头的段落（小标题式）
             out.append('<p><strong>' + inline(ln) + '</strong></p>')
             i += 1
         else:
@@ -85,6 +91,32 @@ def inline(t):
 
 
 content = md_to_html(body_lines)
+
+# 构建 Schema JSON-LD
+schema_article = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": h1_title,
+    "description": meta_desc,
+    "author": {"@type": "Organization", "name": "脚轮.cn"},
+    "publisher": {"@type": "Organization", "name": "脚轮.cn"},
+    "datePublished": "2026-11-04",
+    "dateModified": "2026-11-04",
+    "wordCount": 5000
+}
+
+schema_breadcrumb = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "首页"},
+        {"@type": "ListItem", "position": 2, "name": "新闻资讯"},
+        {"@type": "ListItem", "position": 3, "name": h1_title}
+    ]
+}
+
+schema_json = json.dumps(schema_article, ensure_ascii=False)
+schema_bc_json = json.dumps(schema_breadcrumb, ensure_ascii=False)
 
 CSS = '''
 .article-banner { padding: calc(var(--header-h) + 50px) 20px 40px; background: linear-gradient(135deg, var(--primary-dark), var(--primary)); color: #fff; text-align: center; }
@@ -128,10 +160,16 @@ HTML = f'''<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title}</title>
-  <meta name="description" content="{description}">
+  <title>{meta_title} | 脚轮.cn</title>
+  <meta name="description" content="{meta_desc}">
   <meta name="keywords" content="{keywords}">
   <link rel="stylesheet" href="../css/style.css">
+  <script type="application/ld+json">
+{schema_json}
+  </script>
+  <script type="application/ld+json">
+{schema_bc_json}
+  </script>
   <style>{CSS}</style>
 </head>
 <body>
@@ -156,9 +194,9 @@ HTML = f'''<!DOCTYPE html>
 
   <section class="article-banner">
     <div class="pin">&#128204; 置顶推荐</div>
-    <h1>脚轮完全指南：种类、材质、应用与选购维护一文讲透</h1>
+    <h1>{h1_title}</h1>
     <div class="meta">
-      <span>&#128197; 2026-10-30</span>
+      <span>&#128197; 2026-11-04</span>
       <span>&#128214; 置顶长文</span>
       <span>&#128269; 脚轮知识库</span>
     </div>
@@ -170,7 +208,7 @@ HTML = f'''<!DOCTYPE html>
     {content}
     <div class="article-footer-cta">
       <h3>需要专业的脚轮选型建议？</h3>
-      <p>我们的工程师团队随时为您提供选型建议、材质推荐与报价方案</p>
+      <p>把工况参数发给我们，工程师 24 小时内出承重计算书</p>
       <a href="../contact.html" class="btn btn-primary">立即咨询 &rarr;</a>
     </div>
   </div>
@@ -222,3 +260,5 @@ HTML = f'''<!DOCTYPE html>
 
 open(OUT, 'w', encoding='utf-8').write(HTML)
 print('生成:', OUT)
+print('H1:', h1_title)
+print('Meta Title:', meta_title)
